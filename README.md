@@ -1,152 +1,158 @@
 # Cobalt Clip Downloader
 
-Android-приложение на Kotlin и Jetpack Compose для сохранения разрешенного
-пользователем контента с поддерживаемых cobalt сервисов через собственный
-экземпляр cobalt API.
+**English** | [Русский](README.ru.md)
 
-## Важные ограничения
+An Android app built with Kotlin and Jetpack Compose for saving authorized
+content from services supported by cobalt through your own cobalt API instance.
 
-- На Android 10 (API 29) и новее обычное приложение **не может читать буфер
-  обмена в фоне**, даже если запущен foreground service. Приложение отслеживает
-  буфер, пока его окно видно. Надежный фоновый сценарий: в YouTube/Instagram
-  нажать **Поделиться → Cobalt Clip**.
-- Публичный `api.cobalt.tools` защищен от ботов и официально не предназначен
-  для сторонних приложений. Для работы приложения разверните собственный
-  экземпляр cobalt API и укажите его HTTPS-адрес в настройках.
-- Приложение не обходит DRM, авторизацию или ограничения доступа. Используйте
-  его только для собственного контента, материалов с открытой лицензией либо
-  при наличии разрешения правообладателя. Соблюдайте условия платформ.
+## Important limitations
 
-## Возможности
+- On Android 10 (API 29) and newer, a regular app **cannot read the clipboard
+  in the background**, even when a foreground service is running. The app
+  watches the clipboard only while its window is visible. For a reliable
+  background workflow, use **Share → Cobalt Clip** in YouTube, Instagram, or
+  another supported app.
+- The public `api.cobalt.tools` instance is protected against bots and is not
+  intended for third-party applications. Deploy your own cobalt API instance
+  and enter its HTTPS address in the app settings.
+- The app does not bypass DRM, authentication, or access restrictions. Use it
+  only for your own content, openly licensed material, or content you have
+  permission to save. Follow the terms of the source platform.
 
-- распознавание ссылок YouTube, Instagram, TikTok, Facebook, X/Twitter,
-  Vimeo, Reddit, Pinterest, Twitch, SoundCloud и других сервисов cobalt;
-- пакетное добавление нескольких ссылок и импорт списка из TXT;
-- прием ссылок из системного меню «Поделиться»;
-- автозагрузка найденной ссылки при открытом приложении;
-- foreground service типа `dataSync`, прогресс и отмена в уведомлении;
-- автоматические повторы временных сетевых ошибок и HTTP 429/5xx с
-  экспоненциальной задержкой и поддержкой `Retry-After`;
-- загрузка сначала во временный `.part`-файл: незавершенное медиа не появляется
-  в галерее, а временный файл удаляется после успеха, ошибки или отмены;
-- продолжение оборванной загрузки через HTTP Range, если сервер его
-  поддерживает;
-- постоянная Room-очередь, переживающая перезапуск процесса;
-- отложенный запуск через WorkManager;
-- повтор, отмена и удаление отдельных задач;
-- быстрые профили «Экономный», «1080p», «Максимум», «Аудио»;
-- инкогнито-режим без сохранения завершенной задачи и ошибки в истории;
-- копирование подробностей ошибки из истории;
-- выбор собственной папки через системный Storage Access Framework;
-- выбор качества от 360p до максимального;
-- отдельные режимы загрузки видео и аудио;
-- сохранение аудио в `Music/CobaltClip`, изображений в `Pictures/CobaltClip`,
-  видео в `Movies/CobaltClip`;
-- повтор неудачной загрузки и отправка готового файла из истории;
-- скорость, загруженный объем и примерное оставшееся время в уведомлении;
-- API key для приватного экземпляра cobalt;
-- поддержка ответов cobalt `tunnel`, `redirect`, `picker`, `error`;
-- сохранение через MediaStore в `Movies/CobaltClip`, после чего файл виден в
-  галерее;
-- локальная история состояний и ошибок.
+## Features
 
-Ответ `local-processing` намеренно не обрабатывается: он требует встроенного
-FFmpeg/remux и существенно увеличивает приложение. Клиент отправляет
-`localProcessing: disabled`, поэтому корректно настроенный сервер должен вернуть
-готовый tunnel/redirect.
+- recognizes links from YouTube, Instagram, TikTok, Facebook, X/Twitter,
+  Vimeo, Reddit, Pinterest, Twitch, SoundCloud, and other cobalt services;
+- adds multiple links as a batch and imports link lists from TXT files;
+- receives links from the Android Share menu;
+- automatically starts a detected link while the app is open;
+- uses a `dataSync` foreground service with progress and cancellation controls
+  in the notification;
+- automatically retries temporary network failures and HTTP 429/5xx responses
+  with exponential backoff and `Retry-After` support;
+- downloads to a temporary `.part` file so unfinished media does not appear in
+  the gallery and removes temporary files after success, failure, or
+  cancellation;
+- resumes interrupted downloads with HTTP Range when supported by the server;
+- keeps a persistent Room queue across process restarts;
+- schedules delayed downloads through WorkManager;
+- retries, cancels, and deletes individual tasks;
+- provides Economy, 1080p, Maximum, and Audio quick profiles;
+- offers an incognito mode that does not retain completed tasks or errors;
+- copies detailed errors from history;
+- selects a custom output folder through the Storage Access Framework;
+- selects video quality from 360p up to maximum;
+- supports separate video and audio download modes;
+- saves audio to `Music/CobaltClip`, images to `Pictures/CobaltClip`, and video
+  to `Movies/CobaltClip`;
+- retries failed downloads and shares completed files from history;
+- displays speed, downloaded size, and estimated remaining time in the
+  notification;
+- supports API keys for private cobalt instances;
+- handles cobalt `tunnel`, `redirect`, `picker`, and `error` responses;
+- saves through MediaStore so completed files are available in the gallery;
+- keeps a local history of task states and errors.
 
-## Сборка
+The `local-processing` response is intentionally unsupported because it
+requires embedded FFmpeg/remux functionality and would significantly increase
+the app size. The client sends `localProcessing: disabled`, so a correctly
+configured server should return a ready-to-use tunnel or redirect response.
 
-Требуются Android Studio, JDK 17+ и Android SDK 34. Минимальная версия
-устройства — Android 10 (API 29).
+## Build
 
-1. Откройте папку проекта в Android Studio.
-2. Дождитесь синхронизации Gradle.
-3. Выберите **Build → Build APK(s)**.
+Android Studio, JDK 17+, and Android SDK 34 are required. The minimum supported
+Android version is Android 10 (API 29).
 
-Или из терминала (если Gradle установлен):
+1. Open the project directory in Android Studio.
+2. Wait for Gradle synchronization to finish.
+3. Select **Build → Build APK(s)**.
+
+Alternatively, run:
 
 ```bash
 gradle :app:assembleDebug
 ```
 
-APK появится в `app/build/outputs/apk/debug/app-debug.apk`.
+The APK will be created at
+`app/build/outputs/apk/debug/app-debug.apk`.
 
-Для публичного релиза настройте постоянный signing key в локальном
-`keystore.properties` (файл исключён из Git) и выполните:
+For a public release, configure the permanent signing key in a local
+`keystore.properties` file, which is excluded from Git, and run:
 
 ```bash
 gradle :app:assembleRelease
 ```
 
-Подписанный APK появится в
-`app/build/outputs/apk/release/app-release.apk`. Сохраните резервную копию
-keystore и паролей: без исходного ключа нельзя устанавливать будущие обновления
-поверх уже опубликованной версии.
+The signed APK will be created at
+`app/build/outputs/apk/release/app-release.apk`. Keep secure backups of both
+the keystore and its passwords. Without the original key, future versions
+cannot be installed as updates over the published app.
 
-## Установка
+## Installation
 
-Включите установку из выбранного источника и откройте APK либо выполните:
+Allow installation from the selected source and open the APK, or run:
 
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-На Android 13+ разрешите уведомления. Файлы сохраняются через MediaStore без
-разрешения на полный доступ к хранилищу.
+On Android 13 and newer, allow notifications. Files are saved through
+MediaStore without requesting broad storage access.
 
-## Настройка
+## Configuration
 
-### Домен и VPS
+### Domain and VPS
 
-1. Зарегистрируйте домен или используйте уже имеющийся.
-2. Создайте в DNS поддомен для API, например `cobalt.example.com`.
-3. Добавьте для поддомена запись `A`, указывающую на публичный IPv4-адрес VPS.
-   Если VPS поддерживает IPv6, дополнительно создайте запись `AAAA`.
-4. Подготовьте VPS с Linux, публичным IP-адресом и открытыми портами `80` и
-   `443`. Дождитесь обновления DNS и проверьте, что поддомен указывает на VPS.
+1. Register a domain or use one you already own.
+2. Create a DNS subdomain for the API, such as `cobalt.example.com`.
+3. Add an `A` record that points the subdomain to the VPS public IPv4 address.
+   If the VPS supports IPv6, add an `AAAA` record as well.
+4. Prepare a Linux VPS with a public IP address and open ports `80` and `443`.
+   Wait for DNS propagation and verify that the subdomain resolves to the VPS.
 
-### Установка cobalt
+### Installing cobalt
 
-1. Установите на VPS Docker Engine и плагин Docker Compose.
-2. Создайте отдельную папку для cobalt и файл `docker-compose.yml`.
-3. Возьмите актуальный пример Compose из
-   [официальной инструкции cobalt](https://github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md).
-4. Замените пример `API_URL` на полный адрес своего поддомена с HTTPS и
-   завершающим `/`, например `https://cobalt.example.com/`.
-5. Запустите контейнер командой `docker compose up -d`.
-6. Настройте Nginx, Caddy или другой reverse proxy: принимайте HTTPS-запросы на
-   поддомене и передавайте их на локальный порт cobalt `9000`. Выпустите
-   TLS-сертификат, например через Let's Encrypt.
-7. Если экземпляр доступен из интернета, включите защиту от злоупотреблений
-   через API keys и/или Turnstile согласно
-   [документации по защите экземпляра](https://github.com/imputnet/cobalt/blob/main/docs/protect-an-instance.md).
-8. Проверьте в браузере `https://cobalt.example.com/`: сервер должен вернуть
-   JSON с информацией об экземпляре.
+1. Install Docker Engine and the Docker Compose plugin on the VPS.
+2. Create a dedicated cobalt directory and a `docker-compose.yml` file.
+3. Copy the current Compose example from the
+   [official cobalt guide](https://github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md).
+4. Replace the sample `API_URL` with the full HTTPS address of your subdomain,
+   including the trailing slash, for example
+   `https://cobalt.example.com/`.
+5. Start the container with `docker compose up -d`.
+6. Configure Nginx, Caddy, or another reverse proxy to accept HTTPS requests
+   for the subdomain and forward them to cobalt on local port `9000`. Obtain a
+   TLS certificate, for example through Let's Encrypt.
+7. If the instance is exposed to the internet, enable abuse protection with
+   API keys, Turnstile, or both by following the
+   [instance protection guide](https://github.com/imputnet/cobalt/blob/main/docs/protect-an-instance.md).
+8. Open `https://cobalt.example.com/` in a browser. The server should return
+   JSON containing information about the instance.
 
-Актуальные переменные окружения перечислены в
-[документации cobalt](https://github.com/imputnet/cobalt/blob/main/docs/api-env-variables.md),
-а формат запросов — в
-[документации API](https://github.com/imputnet/cobalt/blob/main/docs/api.md).
+See the current
+[cobalt environment variables](https://github.com/imputnet/cobalt/blob/main/docs/api-env-variables.md)
+and the
+[cobalt API documentation](https://github.com/imputnet/cobalt/blob/main/docs/api.md)
+for additional configuration details.
 
-### Подключение приложения
+### Connecting the app
 
-1. Откройте вкладку **Настройки**.
-2. Укажите базовый HTTPS-адрес API без дополнительного пути, например
+1. Open the **Settings** tab.
+2. Enter the base HTTPS API address without an additional path, for example
    `https://cobalt.example.com`.
-3. Если на сервере включена авторизация по API key, введите созданный при
-   настройке сервера ключ.
-4. Сохраните параметры, выберите качество и при необходимости включите
-   автозагрузку.
+3. If API-key authentication is enabled on the server, enter the key created
+   during server configuration.
+4. Save the server settings, choose a quality, and optionally enable automatic
+   downloads.
 
-Ключ хранится локально в DataStore приложения. Для production-развертывания с
-повышенными требованиями безопасности рекомендуется заменить это на
-шифрованное хранилище либо короткоживущий Bearer-токен.
+The API key is stored locally in the app's DataStore. For production
+deployments with stronger security requirements, use encrypted storage or
+short-lived Bearer tokens.
 
 ## API
 
-Клиент отправляет `POST /` с `Accept: application/json`,
-`Content-Type: application/json` и полями:
+The client sends `POST /` with `Accept: application/json`,
+`Content-Type: application/json`, and the following fields:
 
 ```json
 {
@@ -160,10 +166,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 }
 ```
 
-## Структура
+## Project structure
 
-- `MainActivity.kt` — Compose UI, share intent и наблюдение за буфером;
-- `DownloadService.kt` — foreground service, потоковая загрузка и MediaStore;
-- `CobaltClient.kt` — cobalt API и разбор ответов;
-- `ScheduledDownloadWorker.kt` — запуск отложенных задач;
-- `data/` — постоянная Room-очередь, история и DataStore-настройки.
+- `MainActivity.kt` — Compose UI, share intents, and clipboard monitoring;
+- `DownloadService.kt` — foreground service, streaming downloads, and
+  MediaStore integration;
+- `CobaltClient.kt` — cobalt API calls and response parsing;
+- `ScheduledDownloadWorker.kt` — scheduled task launcher;
+- `data/` — persistent Room queue, task history, and DataStore settings.
