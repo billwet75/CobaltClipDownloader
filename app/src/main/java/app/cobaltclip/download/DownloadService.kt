@@ -15,12 +15,17 @@ import android.provider.MediaStore
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.documentfile.provider.DocumentFile
 import app.cobaltclip.CobaltApp
 import app.cobaltclip.MainActivity
 import app.cobaltclip.data.DownloadRecord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
@@ -30,13 +35,13 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.URLConnection
+import java.util.concurrent.TimeUnit
 
 class DownloadService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val client = CobaltClient()
     private var activeJob: Job? = null
-    private val pendingUrls = ArrayDeque<String>()
-    private var currentUrl: String? = null
+    private var currentId: Long? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -45,53 +50,97 @@ class DownloadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_CANCEL) {
-            pendingUrls.clear()
-            activeJob?.cancel()
+            val id = intent.getLongExtra(EXTRA_ID, -1)
+            if (activeJob == null) startInForeground("Отмена задачи…", 0)
+            scope.launch {
+                (application as CobaltApp).database.downloads().cancel(id)
+                if (activeJob == null) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            }
+            if (currentId == id) {
+                activeJob?.cancel()
+            }
             return START_NOT_STICKY
         }
-        val source = intent?.getStringExtra(EXTRA_URL) ?: return START_NOT_STICKY
-        if (source != currentUrl && source !in pendingUrls) pendingUrls.addLast(source)
+        val source = intent?.getStringExtra(EXTRA_URL)
+        if (source != null) {
+            if (activeJob == null) startInForeground("Добавление в очередь…", 0)
+            scope.launch {
+                val scheduledAt = intent.getLongExtra(EXTRA_SCHEDULED_AT, 0)
+                val record = DownloadRecord(
+                    sourceUrl = source,
+                    downloadMode = intent.getStringExtra(EXTRA_MODE) ?: "auto",
+                    quality = intent.getStringExtra(EXTRA_QUALITY) ?: "1080",
+                    incognito = intent.getBooleanExtra(EXTRA_INCOGNITO, false),
+                    scheduledAt = scheduledAt
+                )
+                (application as CobaltApp).database.downloads().insert(record)
+                if (scheduledAt > System.currentTimeMillis()) {
+                    scheduleWakeUp(scheduledAt)
+                    if (activeJob == null) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }
+                } else {
+                    startQueue()
+                }
+            }
+            return START_NOT_STICKY
+        }
+        startQueue()
+        return START_NOT_STICKY
+    }
+
+    private fun startQueue() {
         if (activeJob == null) {
             startInForeground("Подготовка загрузки…", 0)
             activeJob = scope.launch { processQueue() }
-        } else {
-            updateNotification("Добавлено в очередь: ${pendingUrls.size}", 0)
         }
-        return START_NOT_STICKY
     }
 
     private suspend fun processQueue() {
         var allCompleted = true
         try {
-            while (pendingUrls.isNotEmpty()) {
-                val source = pendingUrls.removeFirst()
-                currentUrl = source
-                allCompleted = download(source) && allCompleted
+            val dao = (application as CobaltApp).database.downloads()
+            dao.recoverInterrupted()
+            while (true) {
+                val record = dao.nextReady() ?: break
+                currentId = record.id
+                allCompleted = download(record) && allCompleted
             }
         } finally {
-            currentUrl = null
+            currentId = null
             activeJob = null
+            val readyRemains = (application as CobaltApp).database.downloads().nextReady() != null
             if (!allCompleted) {
                 updateNotification("Очередь завершена с ошибками", 0, complete = true)
             }
             stopForeground(if (allCompleted) STOP_FOREGROUND_REMOVE else STOP_FOREGROUND_DETACH)
             stopSelf()
+            if (readyRemains) {
+                process(applicationContext)
+            }
         }
     }
 
-    private suspend fun download(source: String): Boolean {
+    private suspend fun download(record: DownloadRecord): Boolean {
         val app = application as CobaltApp
         val dao = app.database.downloads()
-        val recordId = dao.insert(DownloadRecord(sourceUrl = source))
+        val recordId = record.id
         var completed = false
         try {
-            val settings = app.settings.flow.first()
+            val settings = app.settings.flow.first().copy(
+                downloadMode = record.downloadMode,
+                quality = record.quality
+            )
             dao.update(recordId, "RESOLVING", 0)
-            val files = client.resolve(source, settings)
+            val files = client.resolve(record.sourceUrl, settings)
             files.forEachIndexed { index, remote ->
                 val label = if (files.size > 1) "${index + 1}/${files.size}: ${remote.filename}" else remote.filename
                 dao.update(recordId, "DOWNLOADING", 0, label)
-                saveRemote(remote) { progress, details ->
+                saveRemote(remote, settings.outputTreeUri) { progress, details ->
                     scope.launch {
                         dao.update(recordId, "DOWNLOADING", progress, label)
                         updateNotification("Загрузка $label · $details", progress)
@@ -102,20 +151,27 @@ class DownloadService : Service() {
             }
             completed = true
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            dao.update(recordId, "CANCELLED", 0, error = "Отменено")
+            withContext(NonCancellable) {
+                dao.update(recordId, "CANCELLED", 0, error = "Отменено")
+            }
         } catch (error: Exception) {
             dao.update(recordId, "FAILED", 0, error = error.message ?: "Неизвестная ошибка")
             updateNotification(error.message ?: "Ошибка загрузки", 0, complete = true)
         } finally {
-            if (pendingUrls.isNotEmpty()) {
-                updateNotification("Следующая загрузка… Осталось: ${pendingUrls.size}", 0)
+            val remaining = dao.pendingCount()
+            if (remaining > 0) {
+                updateNotification("Следующая загрузка… Осталось: $remaining", 0)
             }
+        }
+        if (record.incognito) {
+            withContext(NonCancellable) { dao.delete(recordId) }
         }
         return completed
     }
 
     private suspend fun saveRemote(
         remote: RemoteFile,
+        outputTreeUri: String,
         progress: (Int, String) -> Unit
     ): Uri =
         withContext(Dispatchers.IO) {
@@ -171,6 +227,22 @@ class DownloadService : Service() {
                 val filename = safeFilename(
                     remote.filename.ifBlank { "cobalt_${System.currentTimeMillis()}.${extension(contentType)}" }
                 )
+                if (outputTreeUri.isNotBlank()) {
+                    val treeUri = Uri.parse(outputTreeUri)
+                    val directory = DocumentFile.fromTreeUri(this@DownloadService, treeUri)
+                        ?: throw CobaltException("Выбранная папка больше недоступна")
+                    val target = directory.createFile(contentType, filename)
+                        ?: throw CobaltException("Не удалось создать файл в выбранной папке")
+                    try {
+                        contentResolver.openOutputStream(target.uri)?.use { output ->
+                            partFile.inputStream().use { input -> input.copyTo(output) }
+                        } ?: throw CobaltException("Не удалось открыть выбранную папку для записи")
+                        return@withContext target.uri
+                    } catch (error: Exception) {
+                        target.delete()
+                        throw error
+                    }
+                }
                 if (Build.VERSION.SDK_INT >= 29) {
                     val collection = when {
                         contentType.startsWith("image/") ->
@@ -287,7 +359,9 @@ class DownloadService : Service() {
                     "Отмена",
                     PendingIntent.getService(
                         this@DownloadService, 1,
-                        Intent(this@DownloadService, DownloadService::class.java).setAction(ACTION_CANCEL),
+                        Intent(this@DownloadService, DownloadService::class.java)
+                            .setAction(ACTION_CANCEL)
+                            .putExtra(EXTRA_ID, currentId ?: -1),
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
                 )
@@ -299,6 +373,14 @@ class DownloadService : Service() {
                 NotificationChannel(CHANNEL_ID, "Загрузки", NotificationManager.IMPORTANCE_LOW)
             )
         }
+    }
+
+    private fun scheduleWakeUp(scheduledAt: Long) {
+        val delay = (scheduledAt - System.currentTimeMillis()).coerceAtLeast(0)
+        val request = OneTimeWorkRequestBuilder<ScheduledDownloadWorker>()
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .build()
+        WorkManager.getInstance(this).enqueue(request)
     }
 
     private fun safeFilename(value: String) =
@@ -334,8 +416,43 @@ class DownloadService : Service() {
 
     companion object {
         const val EXTRA_URL = "url"
+        const val EXTRA_ID = "id"
+        const val EXTRA_MODE = "mode"
+        const val EXTRA_QUALITY = "quality"
+        const val EXTRA_INCOGNITO = "incognito"
+        const val EXTRA_SCHEDULED_AT = "scheduled_at"
         const val ACTION_CANCEL = "cancel"
+        private const val ACTION_PROCESS = "process"
         private const val CHANNEL_ID = "downloads"
         private const val NOTIFICATION_ID = 42
+
+        fun enqueue(
+            context: android.content.Context,
+            url: String,
+            mode: String,
+            quality: String,
+            incognito: Boolean = false,
+            scheduledAt: Long = 0
+        ) {
+            val intent = Intent(context, DownloadService::class.java)
+                .putExtra(EXTRA_URL, url)
+                .putExtra(EXTRA_MODE, mode)
+                .putExtra(EXTRA_QUALITY, quality)
+                .putExtra(EXTRA_INCOGNITO, incognito)
+                .putExtra(EXTRA_SCHEDULED_AT, scheduledAt)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun process(context: android.content.Context) {
+            val intent = Intent(context, DownloadService::class.java).setAction(ACTION_PROCESS)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun cancel(context: android.content.Context, id: Long) {
+            val intent = Intent(context, DownloadService::class.java)
+                .setAction(ACTION_CANCEL)
+                .putExtra(EXTRA_ID, id)
+            ContextCompat.startForegroundService(context, intent)
+        }
     }
 }
