@@ -2,6 +2,9 @@
 .gradle/
 .idea/
 local.properties
+keystore.properties
+*.jks
+*.keystore
 **/build/
 captures/
 .externalNativeBuild/
