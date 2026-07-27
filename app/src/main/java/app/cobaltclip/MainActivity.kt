@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -68,7 +70,15 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch {
                 val settings = (application as CobaltApp).settings.flow.first()
                 if (settings.autoDownload) {
-                    UrlMatcher.extract(text)?.let { enqueueDownload(this@MainActivity, it) }
+                    UrlMatcher.extractAll(text).forEach {
+                        enqueueDownload(
+                            this@MainActivity,
+                            it,
+                            settings.downloadMode,
+                            settings.quality,
+                            settings.incognito
+                        )
+                    }
                 }
                 finishAndRemoveTask()
             }
@@ -94,7 +104,18 @@ class MainActivity : ComponentActivity() {
         if (intent.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT) else null
 
     private fun enqueueIfSupported(text: String) {
-        UrlMatcher.extract(text)?.let { enqueueDownload(this, it) }
+        lifecycleScope.launch {
+            val settings = (application as CobaltApp).settings.flow.first()
+            UrlMatcher.extractAll(text).forEach {
+                enqueueDownload(
+                    this@MainActivity,
+                    it,
+                    settings.downloadMode,
+                    settings.quality,
+                    settings.incognito
+                )
+            }
+        }
     }
 }
 
@@ -109,6 +130,30 @@ private fun AppScreen(vm: MainViewModel, initialSharedText: String?) {
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {}
+    val textFilePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openInputStream(uri)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+        }.getOrNull()?.let { imported ->
+            input = listOf(input, imported).filter(String::isNotBlank).joinToString("\n")
+        }
+    }
+    val outputFolderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+        vm.setOutputTreeUri(uri.toString())
+    }
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -117,14 +162,30 @@ private fun AppScreen(vm: MainViewModel, initialSharedText: String?) {
         initialSharedText?.let { text ->
             UrlMatcher.extract(text)?.let {
                 input = it
-                if (settings.autoDownload) enqueueDownload(context, it)
+                if (settings.autoDownload) {
+                    enqueueDownload(
+                        context,
+                        it,
+                        settings.downloadMode,
+                        settings.quality,
+                        settings.incognito
+                    )
+                }
             }
         }
     }
 
     ClipboardWatcher(settings.autoDownload) { url ->
         input = url
-        if (settings.autoDownload) enqueueDownload(context, url)
+        if (settings.autoDownload) {
+            enqueueDownload(
+                context,
+                url,
+                settings.downloadMode,
+                settings.quality,
+                settings.incognito
+            )
+        }
     }
 
     Scaffold { padding ->
@@ -135,11 +196,34 @@ private fun AppScreen(vm: MainViewModel, initialSharedText: String?) {
                 }
             }
             when (tab) {
-                0 -> DownloadTab(input, { input = it }) {
-                    UrlMatcher.extract(input)?.let { enqueueDownload(context, it) }
+                0 -> DownloadTab(
+                    input = input,
+                    onInput = { input = it },
+                    settings = settings,
+                    onImport = { textFilePicker.launch("text/plain") }
+                ) { delayMinutes ->
+                    val scheduledAt = if (delayMinutes > 0) {
+                        System.currentTimeMillis() + delayMinutes * 60_000L
+                    } else {
+                        0
+                    }
+                    UrlMatcher.extractAll(input).forEach {
+                        enqueueDownload(
+                            context,
+                            it,
+                            settings.downloadMode,
+                            settings.quality,
+                            settings.incognito,
+                            scheduledAt
+                        )
+                    }
                 }
-                1 -> HistoryTab(history, vm::clearHistory)
-                else -> SettingsTab(settings, vm)
+                1 -> HistoryTab(history, vm)
+                else -> SettingsTab(
+                    settings,
+                    vm,
+                    onChooseFolder = { outputFolderPicker.launch(null) }
+                )
             }
         }
     }
@@ -164,18 +248,48 @@ private fun ClipboardWatcher(auto: Boolean, onUrl: (String) -> Unit) {
 }
 
 @Composable
-private fun DownloadTab(input: String, onInput: (String) -> Unit, onDownload: () -> Unit) {
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Ссылка на YouTube или Instagram", style = MaterialTheme.typography.titleLarge)
+private fun DownloadTab(
+    input: String,
+    onInput: (String) -> Unit,
+    settings: UserSettings,
+    onImport: () -> Unit,
+    onDownload: (Long) -> Unit
+) {
+    var delayMinutes by remember { mutableStateOf("0") }
+    val urls = UrlMatcher.extractAll(input)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text("Ссылки на поддерживаемые сервисы", style = MaterialTheme.typography.titleLarge)
         OutlinedTextField(
             value = input,
             onValueChange = onInput,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Вставьте ссылку") },
-            minLines = 2
+            label = { Text("Одна или несколько ссылок") },
+            supportingText = { Text("Найдено ссылок: ${urls.size}") },
+            minLines = 3
         )
-        Button(onClick = onDownload, enabled = UrlMatcher.extract(input) != null) {
-            Text("Скачать в галерею")
+        TextButton(onClick = onImport) { Text("Импортировать ссылки из TXT") }
+        OutlinedTextField(
+            value = delayMinutes,
+            onValueChange = { delayMinutes = it.filter(Char::isDigit).take(5) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Запустить через, минут") },
+            supportingText = { Text("0 — начать сейчас") }
+        )
+        Text(
+            "Профиль: ${if (settings.downloadMode == "audio") "аудио" else "видео"}, " +
+                settings.quality
+        )
+        Button(
+            onClick = { onDownload(delayMinutes.toLongOrNull() ?: 0) },
+            enabled = urls.isNotEmpty()
+        ) {
+            Text(if (urls.size > 1) "Добавить ${urls.size} в очередь" else "Добавить в очередь")
         }
         Text(
             "На Android 10+ системная защита разрешает чтение буфера только пока приложение на экране. " +
@@ -190,31 +304,63 @@ private fun DownloadTab(input: String, onInput: (String) -> Unit, onDownload: ()
 }
 
 @Composable
-private fun HistoryTab(history: List<DownloadRecord>, clear: () -> Unit) {
+private fun HistoryTab(history: List<DownloadRecord>, vm: MainViewModel) {
     val context = LocalContext.current
-    Column(Modifier.padding(16.dp)) {
+    val clipboard = context.getSystemService(ClipboardManager::class.java)
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Загрузки", style = MaterialTheme.typography.titleLarge)
-            TextButton(onClick = clear, enabled = history.isNotEmpty()) { Text("Очистить") }
+            TextButton(
+                onClick = vm::clearHistory,
+                enabled = history.any { it.status in listOf("COMPLETED", "FAILED", "CANCELLED") }
+            ) { Text("Очистить готовые") }
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             items(history, key = { it.id }) { item ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
                         Text(item.filename.ifBlank { item.sourceUrl }, style = MaterialTheme.typography.titleMedium)
                         Text(statusLabel(item.status, item.progress))
                         item.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        Text(
+                            "${if (item.downloadMode == "audio") "Аудио" else "Видео"} · " +
+                                item.quality,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (item.scheduledAt > System.currentTimeMillis() && item.status == "QUEUED") {
+                            Text(
+                                "Запланировано: ${java.text.DateFormat.getDateTimeInstance().format(item.scheduledAt)}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                         Text(item.sourceUrl, style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (item.status == "FAILED" || item.status == "CANCELLED") {
-                                TextButton(onClick = {
-                                    enqueueDownload(context, item.sourceUrl)
-                                }) { Text("Повторить") }
+                                TextButton(onClick = { vm.retry(item.id) }) { Text("Повторить") }
+                            }
+                            if (item.status in listOf("QUEUED", "RESOLVING", "DOWNLOADING")) {
+                                TextButton(onClick = { vm.cancel(item.id) }) { Text("Отменить") }
                             }
                             if (item.status == "COMPLETED" && item.mediaUri != null) {
                                 TextButton(onClick = {
                                     shareMedia(context, Uri.parse(item.mediaUri))
                                 }) { Text("Поделиться") }
+                            }
+                            if (item.error != null) {
+                                TextButton(onClick = {
+                                    clipboard.setPrimaryClip(
+                                        ClipData.newPlainText(
+                                            "Cobalt Clip error",
+                                            "${item.error}\n${item.sourceUrl}"
+                                        )
+                                    )
+                                }) { Text("Копировать ошибку") }
+                            }
+                            if (item.status in listOf("COMPLETED", "FAILED", "CANCELLED")) {
+                                TextButton(onClick = { vm.delete(item.id) }) { Text("Удалить") }
                             }
                         }
                     }
@@ -225,11 +371,21 @@ private fun HistoryTab(history: List<DownloadRecord>, clear: () -> Unit) {
 }
 
 @Composable
-private fun SettingsTab(settings: UserSettings, vm: MainViewModel) {
+private fun SettingsTab(
+    settings: UserSettings,
+    vm: MainViewModel,
+    onChooseFolder: () -> Unit
+) {
     var endpoint by remember(settings.endpoint) { mutableStateOf(settings.endpoint) }
     var apiKey by remember(settings.apiKey) { mutableStateOf(settings.apiKey) }
     val qualities = listOf("360", "480", "720", "1080", "1440", "2160", "max")
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         Text("Режим загрузки")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = { vm.setDownloadMode("auto") }) {
@@ -239,6 +395,13 @@ private fun SettingsTab(settings: UserSettings, vm: MainViewModel) {
                 Text(if (settings.downloadMode == "audio") "[Аудио]" else "Аудио")
             }
         }
+        Text("Быстрые профили")
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = { vm.applyProfile("auto", "720") }) { Text("Экономный") }
+            TextButton(onClick = { vm.applyProfile("auto", "1080") }) { Text("1080p") }
+            TextButton(onClick = { vm.applyProfile("auto", "max") }) { Text("Максимум") }
+            TextButton(onClick = { vm.applyProfile("audio", "max") }) { Text("Аудио") }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column(Modifier.fillMaxWidth(0.78f)) {
                 Text("Автозагрузка")
@@ -246,6 +409,33 @@ private fun SettingsTab(settings: UserSettings, vm: MainViewModel) {
                     style = MaterialTheme.typography.bodySmall)
             }
             Switch(settings.autoDownload, vm::setAuto)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.fillMaxWidth(0.78f)) {
+                Text("Инкогнито")
+                Text(
+                    "Не сохранять задачи и ошибки в истории после завершения",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Switch(settings.incognito, vm::setIncognito)
+        }
+        Text("Папка сохранения")
+        Text(
+            if (settings.outputTreeUri.isBlank()) {
+                "Стандартные папки Music/Pictures/Movies/CobaltClip"
+            } else {
+                settings.outputTreeUri
+            },
+            style = MaterialTheme.typography.bodySmall
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = onChooseFolder) { Text("Выбрать папку") }
+            if (settings.outputTreeUri.isNotBlank()) {
+                TextButton(onClick = { vm.setOutputTreeUri("") }) {
+                    Text("Вернуть стандартную")
+                }
+            }
         }
         Text("Качество видео")
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -277,7 +467,8 @@ private fun SettingsTab(settings: UserSettings, vm: MainViewModel) {
         }
         Text(
             "Публичный api.cobalt.tools не предназначен для сторонних приложений без разрешения. " +
-                "Используйте собственный экземпляр или сервер, владелец которого дал доступ.",
+                "Разверните собственный экземпляр cobalt на VPS и подключите его через HTTPS. " +
+                "Инструкция: github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md",
             style = MaterialTheme.typography.bodySmall
         )
     }
@@ -293,10 +484,14 @@ private fun statusLabel(status: String, progress: Int) = when (status) {
     else -> status
 }
 
-private fun enqueueDownload(context: Context, url: String) {
-    val intent = Intent(context, DownloadService::class.java).putExtra(DownloadService.EXTRA_URL, url)
-    ContextCompat.startForegroundService(context, intent)
-}
+private fun enqueueDownload(
+    context: Context,
+    url: String,
+    mode: String,
+    quality: String,
+    incognito: Boolean = false,
+    scheduledAt: Long = 0
+) = DownloadService.enqueue(context, url, mode, quality, incognito, scheduledAt)
 
 private fun shareMedia(context: Context, uri: Uri) {
     val intent = Intent(Intent.ACTION_SEND)

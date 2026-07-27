@@ -14,6 +14,8 @@ data class UserSettings(
     val autoDownload: Boolean = true,
     val quality: String = "1080",
     val downloadMode: String = "auto",
+    val incognito: Boolean = false,
+    val outputTreeUri: String = "",
     val endpoint: String = "",
     val apiKey: String = ""
 )
@@ -23,6 +25,8 @@ class SettingsRepository(private val context: Context) {
         val auto = booleanPreferencesKey("auto")
         val quality = stringPreferencesKey("quality")
         val downloadMode = stringPreferencesKey("download_mode")
+        val incognito = booleanPreferencesKey("incognito")
+        val outputTreeUri = stringPreferencesKey("output_tree_uri")
         val endpoint = stringPreferencesKey("endpoint")
         val apiKey = stringPreferencesKey("api_key")
     }
@@ -32,6 +36,8 @@ class SettingsRepository(private val context: Context) {
             autoDownload = it[Keys.auto] ?: true,
             quality = it[Keys.quality] ?: "1080",
             downloadMode = it[Keys.downloadMode] ?: "auto",
+            incognito = it[Keys.incognito] ?: false,
+            outputTreeUri = it[Keys.outputTreeUri] ?: "",
             endpoint = it[Keys.endpoint] ?: "",
             apiKey = it[Keys.apiKey] ?: ""
         )
@@ -41,6 +47,10 @@ class SettingsRepository(private val context: Context) {
     suspend fun setQuality(value: String) = context.settingsStore.edit { it[Keys.quality] = value }
     suspend fun setDownloadMode(value: String) =
         context.settingsStore.edit { it[Keys.downloadMode] = value }
+    suspend fun setIncognito(value: Boolean) =
+        context.settingsStore.edit { it[Keys.incognito] = value }
+    suspend fun setOutputTreeUri(value: String) =
+        context.settingsStore.edit { it[Keys.outputTreeUri] = value }
     suspend fun setEndpoint(value: String) = context.settingsStore.edit { it[Keys.endpoint] = value.trim() }
     suspend fun setApiKey(value: String) = context.settingsStore.edit { it[Keys.apiKey] = value.trim() }
 }

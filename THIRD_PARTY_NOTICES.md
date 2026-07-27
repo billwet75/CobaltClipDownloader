@@ -14,8 +14,11 @@ Cobalt Clip Downloader uses the following open-source software:
 | [AndroidX Lifecycle](https://developer.android.com/jetpack/androidx/releases/lifecycle) | 2.7.0 | Apache License 2.0 |
 | [AndroidX DataStore Preferences](https://developer.android.com/jetpack/androidx/releases/datastore) | 1.0.0 | Apache License 2.0 |
 | [AndroidX Room](https://developer.android.com/jetpack/androidx/releases/room) | 2.6.1 | Apache License 2.0 |
+| [AndroidX WorkManager](https://developer.android.com/jetpack/androidx/releases/work) | 2.9.0 | Apache License 2.0 |
+| [AndroidX DocumentFile](https://developer.android.com/jetpack/androidx/releases/documentfile) | 1.0.1 | Apache License 2.0 |
 | [OkHttp](https://github.com/square/okhttp) | 4.12.0 | Apache License 2.0 |
 | [Kotlin Coroutines Android](https://github.com/Kotlin/kotlinx.coroutines) | 1.7.3 | Apache License 2.0 |
+| [JUnit 4](https://github.com/junit-team/junit4) (tests only) | 4.13.2 | Eclipse Public License 1.0 |
 
 The full text of the Apache License 2.0 is available in the
 [`LICENSE`](LICENSE) file and at
