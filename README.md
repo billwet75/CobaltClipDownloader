@@ -72,6 +72,18 @@ gradle :app:assembleDebug
 
 APK появится в `app/build/outputs/apk/debug/app-debug.apk`.
 
+Для публичного релиза настройте постоянный signing key в локальном
+`keystore.properties` (файл исключён из Git) и выполните:
+
+```bash
+gradle :app:assembleRelease
+```
+
+Подписанный APK появится в
+`app/build/outputs/apk/release/app-release.apk`. Сохраните резервную копию
+keystore и паролей: без исходного ключа нельзя устанавливать будущие обновления
+поверх уже опубликованной версии.
+
 ## Установка
 
 Включите установку из выбранного источника и откройте APK либо выполните:
