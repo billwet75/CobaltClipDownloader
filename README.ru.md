@@ -2,6 +2,12 @@
 
 [English](README.md) | **Русский**
 
+[![Лицензия](https://img.shields.io/github/license/billwet75/CobaltClipDownloader)](LICENSE)
+[![Релиз](https://img.shields.io/github/v/release/billwet75/CobaltClipDownloader)](https://github.com/billwet75/CobaltClipDownloader/releases)
+[![Звёзды](https://img.shields.io/github/stars/billwet75/CobaltClipDownloader)](https://github.com/billwet75/CobaltClipDownloader/stargazers)
+[![Форки](https://img.shields.io/github/forks/billwet75/CobaltClipDownloader)](https://github.com/billwet75/CobaltClipDownloader/forks)
+[![Участники](https://img.shields.io/github/contributors/billwet75/CobaltClipDownloader)](https://github.com/billwet75/CobaltClipDownloader/graphs/contributors)
+
 Android-приложение на Kotlin и Jetpack Compose для сохранения разрешенного
 пользователем контента с поддерживаемых cobalt сервисов через собственный
 экземпляр cobalt API.

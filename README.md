@@ -2,6 +2,12 @@
 
 **English** | [Русский](README.ru.md)
 
+[![License](https://img.shields.io/github/license/billwet75/CobaltClipDownloader)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/billwet75/CobaltClipDownloader)](https://github.com/billwet75/CobaltClipDownloader/releases)
+[![Stars](https://img.shields.io/github/stars/billwet75/CobaltClipDownloader)](https://github.com/billwet75/CobaltClipDownloader/stargazers)
+[![Forks](https://img.shields.io/github/forks/billwet75/CobaltClipDownloader)](https://github.com/billwet75/CobaltClipDownloader/forks)
+[![Contributors](https://img.shields.io/github/contributors/billwet75/CobaltClipDownloader)](https://github.com/billwet75/CobaltClipDownloader/graphs/contributors)
+
 An Android app built with Kotlin and Jetpack Compose for saving authorized
 content from services supported by cobalt through your own cobalt API instance.
 
