@@ -22,15 +22,15 @@ import androidx.documentfile.provider.DocumentFile
 import app.cobaltclip.CobaltApp
 import app.cobaltclip.MainActivity
 import app.cobaltclip.data.DownloadRecord
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -136,7 +136,16 @@ class DownloadService : Service() {
                 quality = record.quality
             )
             dao.update(recordId, "RESOLVING", 0)
-            val files = client.resolve(record.sourceUrl, settings)
+            val useVkApi = VkExtractor.isVkUrl(record.sourceUrl) &&
+                settings.vkToken.isNotBlank() &&
+                record.downloadMode != "audio"
+            val files = if (useVkApi) {
+                withContext(Dispatchers.IO) {
+                    VkExtractor.resolve(record.sourceUrl, settings.vkToken, settings.quality)
+                }
+            } else {
+                client.resolve(record.sourceUrl, settings)
+            }
             files.forEachIndexed { index, remote ->
                 val label = if (files.size > 1) "${index + 1}/${files.size}: ${remote.filename}" else remote.filename
                 dao.update(recordId, "DOWNLOADING", 0, label)

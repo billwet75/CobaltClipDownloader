@@ -36,4 +36,44 @@ class UrlMatcherTest {
     fun ignoresUnsupportedHosts() {
         assertNull(UrlMatcher.extract("https://example.com/video"))
     }
+
+    @Test
+    fun supportsVkDomains() {
+        assertEquals(
+            "https://vk.com/video-12345_67890",
+            UrlMatcher.extract("https://vk.com/video-12345_67890")
+        )
+        assertEquals(
+            "https://vkvideo.ru/video-12345_67890",
+            UrlMatcher.extract("https://vkvideo.ru/video-12345_67890")
+        )
+        assertEquals(
+            "https://m.vk.com/video-12345_67890",
+            UrlMatcher.extract("https://m.vk.com/video-12345_67890")
+        )
+        assertEquals(
+            "https://vk.ru/video-12345_67890",
+            UrlMatcher.extract("https://vk.ru/video-12345_67890")
+        )
+        assertEquals(
+            "https://vk.ru/clip-12345_67890",
+            UrlMatcher.extract("https://vk.ru/clip-12345_67890")
+        )
+    }
+
+    @Test
+    fun supportsBareVkUrls() {
+        assertEquals(
+            "https://vk.com/video-12345_67890",
+            UrlMatcher.extract("Посмотри vk.com/video-12345_67890")
+        )
+        assertEquals(
+            "https://vkvideo.ru/video-12345_67890",
+            UrlMatcher.extract("Видео тут: vkvideo.ru/video-12345_67890")
+        )
+        assertEquals(
+            "https://vk.ru/video-12345_67890",
+            UrlMatcher.extract("Ссылка vk.ru/video-12345_67890")
+        )
+    }
 }

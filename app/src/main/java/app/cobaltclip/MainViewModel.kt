@@ -26,6 +26,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { app.settings.setOutputTreeUri(value) }
     fun setEndpoint(value: String) = viewModelScope.launch { app.settings.setEndpoint(value) }
     fun setApiKey(value: String) = viewModelScope.launch { app.settings.setApiKey(value) }
+    fun setVkToken(value: String) = viewModelScope.launch { app.settings.setVkToken(value) }
     fun clearHistory() = viewModelScope.launch { app.database.downloads().clearFinished() }
     fun retry(id: Long) = viewModelScope.launch {
         app.database.downloads().retry(id)

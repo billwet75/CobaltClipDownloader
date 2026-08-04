@@ -69,16 +69,14 @@ class MainActivity : ComponentActivity() {
             val text = sharedText(intent)
             lifecycleScope.launch {
                 val settings = (application as CobaltApp).settings.flow.first()
-                if (settings.autoDownload) {
-                    UrlMatcher.extractAll(text).forEach {
-                        enqueueDownload(
-                            this@MainActivity,
-                            it,
-                            settings.downloadMode,
-                            settings.quality,
-                            settings.incognito
-                        )
-                    }
+                UrlMatcher.extractAll(text).forEach {
+                    enqueueDownload(
+                        this@MainActivity,
+                        it,
+                        settings.downloadMode,
+                        settings.quality,
+                        settings.incognito
+                    )
                 }
                 finishAndRemoveTask()
             }
@@ -92,8 +90,15 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         sharedText(intent)?.let { text ->
             lifecycleScope.launch {
-                if ((application as CobaltApp).settings.flow.first().autoDownload) {
-                    enqueueIfSupported(text)
+                val settings = (application as CobaltApp).settings.flow.first()
+                UrlMatcher.extractAll(text).forEach {
+                    enqueueDownload(
+                        this@MainActivity,
+                        it,
+                        settings.downloadMode,
+                        settings.quality,
+                        settings.incognito
+                    )
                 }
                 finishAndRemoveTask()
             }
@@ -102,21 +107,6 @@ class MainActivity : ComponentActivity() {
 
     private fun sharedText(intent: Intent): String? =
         if (intent.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT) else null
-
-    private fun enqueueIfSupported(text: String) {
-        lifecycleScope.launch {
-            val settings = (application as CobaltApp).settings.flow.first()
-            UrlMatcher.extractAll(text).forEach {
-                enqueueDownload(
-                    this@MainActivity,
-                    it,
-                    settings.downloadMode,
-                    settings.quality,
-                    settings.incognito
-                )
-            }
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -293,7 +283,7 @@ private fun DownloadTab(
         }
         Text(
             "На Android 10+ системная защита разрешает чтение буфера только пока приложение на экране. " +
-                "Для надежной работы выберите «Поделиться» → Cobalt Clip в YouTube или Instagram.",
+                "Для надежной работы выберите «Поделиться» → Cobalt Clip в YouTube, VK или Instagram.",
             style = MaterialTheme.typography.bodyMedium
         )
         Text(
@@ -378,6 +368,7 @@ private fun SettingsTab(
 ) {
     var endpoint by remember(settings.endpoint) { mutableStateOf(settings.endpoint) }
     var apiKey by remember(settings.apiKey) { mutableStateOf(settings.apiKey) }
+    var vkToken by remember(settings.vkToken) { mutableStateOf(settings.vkToken) }
     val qualities = listOf("360", "480", "720", "1080", "1440", "2160", "max")
     Column(
         Modifier
@@ -462,7 +453,14 @@ private fun SettingsTab(
             Modifier.fillMaxWidth(), label = { Text("API key (необязательно)") },
             visualTransformation = PasswordVisualTransformation()
         )
-        Button(onClick = { vm.setEndpoint(endpoint); vm.setApiKey(apiKey) }) {
+        Text("ВКонтакте", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(
+            vkToken, { vkToken = it },
+            Modifier.fillMaxWidth(), label = { Text("VK access token (для приватных видео)") },
+            visualTransformation = PasswordVisualTransformation(),
+            supportingText = { Text("Оставьте пустым для публичных видео через cobalt") }
+        )
+        Button(onClick = { vm.setEndpoint(endpoint); vm.setApiKey(apiKey); vm.setVkToken(vkToken) }) {
             Text("Сохранить настройки сервера")
         }
         Text(
