@@ -143,9 +143,19 @@ class CobaltClient {
         return url.newBuilder().query(null).build().toString()
     }
 
-    private fun messageForApiError(code: String) = when (code) {
-        "error.api.fetch.empty" ->
+    private fun messageForApiError(code: String) = when {
+        code == "error.api.fetch.empty" ->
             "Публикация недоступна или приватна. Для Instagram серверу cobalt могут потребоваться cookies."
+        code == "error.api.youtube.login" ->
+            "YouTube требует от сервера cobalt подтверждение «вы не бот». " +
+            "На вашем экземпляре cobalt настройте yt-session-generator (poToken) или cookies; " +
+            "публичный api.cobalt.tools для YouTube заблокирован."
+        code == "error.api.youtube.api_error" ->
+            "YouTube отклонил запрос сервера cobalt. Проверьте cookies/poToken на вашем экземпляре."
+        code.startsWith("error.api.auth.") ->
+            "Сервер cobalt требует авторизацию. Укажите API key в настройках приложения."
+        code.startsWith("error.api.rate") ->
+            "Превышен лимит запросов сервера cobalt. Попробуйте позже."
         else -> "cobalt: $code"
     }
 

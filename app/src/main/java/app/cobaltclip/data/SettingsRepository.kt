@@ -17,7 +17,8 @@ data class UserSettings(
     val incognito: Boolean = false,
     val outputTreeUri: String = "",
     val endpoint: String = "",
-    val apiKey: String = ""
+    val apiKey: String = "",
+    val vkToken: String = ""
 )
 
 class SettingsRepository(private val context: Context) {
@@ -29,6 +30,7 @@ class SettingsRepository(private val context: Context) {
         val outputTreeUri = stringPreferencesKey("output_tree_uri")
         val endpoint = stringPreferencesKey("endpoint")
         val apiKey = stringPreferencesKey("api_key")
+        val vkToken = stringPreferencesKey("vk_token")
     }
 
     val flow: Flow<UserSettings> = context.settingsStore.data.map {
@@ -39,7 +41,8 @@ class SettingsRepository(private val context: Context) {
             incognito = it[Keys.incognito] ?: false,
             outputTreeUri = it[Keys.outputTreeUri] ?: "",
             endpoint = it[Keys.endpoint] ?: "",
-            apiKey = it[Keys.apiKey] ?: ""
+            apiKey = it[Keys.apiKey] ?: "",
+            vkToken = it[Keys.vkToken] ?: ""
         )
     }
 
@@ -53,4 +56,5 @@ class SettingsRepository(private val context: Context) {
         context.settingsStore.edit { it[Keys.outputTreeUri] = value }
     suspend fun setEndpoint(value: String) = context.settingsStore.edit { it[Keys.endpoint] = value.trim() }
     suspend fun setApiKey(value: String) = context.settingsStore.edit { it[Keys.apiKey] = value.trim() }
+    suspend fun setVkToken(value: String) = context.settingsStore.edit { it[Keys.vkToken] = value.trim() }
 }

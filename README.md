@@ -29,6 +29,8 @@ content from services supported by cobalt through your own cobalt API instance.
 
 - recognizes links from YouTube, Instagram, TikTok, Facebook, X/Twitter,
   Vimeo, Reddit, Pinterest, Twitch, SoundCloud, and other cobalt services;
+- downloads VK videos and clips (vk.com, vk.ru, vkvideo.ru) directly through
+  the VK API when a token is set, including private videos of that account;
 - adds multiple links as a batch and imports link lists from TXT files;
 - receives links from the Android Share menu;
 - automatically starts a detected link while the app is open;
@@ -150,6 +152,19 @@ for additional configuration details.
    during server configuration.
 4. Save the server settings, choose a quality, and optionally enable automatic
    downloads.
+
+### VK (VKontakte)
+
+1. In the **Settings** tab enter your VK access token in the
+   "VK access token (for private videos)" field and save.
+2. With a token present, VK links (vk.com, vk.ru, vkvideo.ru, including clips)
+   are resolved directly through the VK API `video.get`, so private videos
+   visible to the token's account can be downloaded as well.
+3. The quality selected in settings also applies to VK: the highest variant
+   not exceeding the selected quality is downloaded.
+4. Without a token, VK links are sent to cobalt like any other service.
+5. In audio mode VK links are always handled through cobalt, which can extract
+   the sound; the direct VK API path only delivers video.
 
 The API key is stored locally in the app's DataStore. For production
 deployments with stronger security requirements, use encrypted storage or
